@@ -30,14 +30,15 @@ ex.source_tables                  # Print the list of source_tables
 def get_KIC():
   # Load the whole KIC
   print 'Loading 13 million KIC targets. This takes about 2 minutes...'
-  KIC = np.genfromtxt('./data/kic.txt', delimiter='|', max_rows=5, names=True, deletechars='kic_')
+  KIC = np.genfromtxt('./data/kic.txt', delimiter='|', max_rows=1E6, names=True, deletechars='kic_')
+  # KIC = np.genfromtxt('./data/kic.txt', delimiter='|', names=True, deletechars='kic_')
   KIC = Table(KIC, names=KIC.dtype.names)
   KICcoords = np.array([KIC['ra'].data,KIC['de'].data]).T
   print 'KIC loaded!\n'
   
   return KICcoords
 
-def light_curves(KIC, search_radius=0.000005, output_data=False):
+def light_curves(KIC, match_radius=0.005, search_radius=0.001, output_data=False):
   '''
   Plot and save all possible light curves from the Kepler Full Frame Images
   
@@ -85,26 +86,25 @@ def light_curves(KIC, search_radius=0.000005, output_data=False):
     # Iterate through exposures to collect time-series detections
     for name,exp in exposures.items():   
       
-      # Only consider the exposure sources in a small circle around the KIC source coordinates
+      # Only consider the sources in a small circle around the KIC source coordinates
       ra, dec, phot = np.array([exp['ra'],exp['dec'],exp['aperture_sum']])
-      ra = ra[np.where(np.logical_and(ra<RA+radius,ra>RA-radius))]
-      dec = dec[np.where(np.logical_and(dec<DEC+radius,dec>DEC-radius))]
+      ra = ra[np.where(np.logical_and(ra<RA+search_radius,ra>RA-search_radius))]
+      dec = dec[np.where(np.logical_and(dec<DEC+search_radius,dec>DEC-search_radius))]
       
-      # Only try to find the source in the exposure if it is in the neighborhood
+      # Create an array of detection coordinates
+      detections = np.array([ra,dec]).T
+  
       if any(ra) and any(dec):
-   
-        # Create an array of all detection coordinates
-        detections = np.array([ra,dec]).T
-      
-        # Create k-d tree of sources in the exposure
+        # Create k-d tree of sources in the neighborhood
         tree = cKDTree(detections)
 
         # Find distance and index of nearest neighbor then grab its coordinates and magnitude from the exposure
         distance, index = tree.query(source)
         coords, magnitude = tree.data[index], phot[index]
-      
+  
         # If the distance is within the specified search radius, add it to the light curve
-        if distance<search_radius: light_curve.append((exp.datetime,magnitude))
+        # if distance<search_radius: light_curve.append((exp.datetime,magnitude))
+        light_curve.append((exp.datetime,magnitude))
 
       else: pass
     
@@ -119,6 +119,8 @@ def light_curves(KIC, search_radius=0.000005, output_data=False):
       plt.title(name)
       plt.savefig('./plots/{}.png'.format(name))
       plt.close()
+      
+      print 'Light curve for {} generated!'.format(name)
   
   if output_data: return sources
 
